@@ -14,7 +14,7 @@ def indent(elem):
 def create_iss_from_kypcb(df):
     root = ET.Element("productionProgram")
     
-    # 1. Header Data (Configuración de máquina 3020VA de Dialight)
+    # 1. Header Data (Configuración técnica para máquinas Dialight)
     header = ET.SubElement(root, "headerData")
     ET.SubElement(header, "targetMachine").text = "ISS"
     ET.SubElement(header, "targetVersion", revision="15", version="3", level="0")
@@ -35,7 +35,7 @@ def create_iss_from_kypcb(df):
     ET.SubElement(m1, "name").text = "3020VAL"
     ET.SubElement(m1, "conveyorLane").text = "SINGLE"
     
-    # 2. Core - Estructura de la Placa (PWB)
+    # 2. Core - Definición de la Placa
     core = ET.SubElement(root, "core")
     pwb = ET.SubElement(core, "pwbBasic")
     ET.SubElement(pwb, "pwbName").text = "GENERATED_PWB"
@@ -44,16 +44,17 @@ def create_iss_from_kypcb(df):
     pwb_cfg = ET.SubElement(core, "pwbConfiguration")
     ET.SubElement(pwb_cfg, "transferDirection").text = "LEFT_TO_RIGHT"
     
-    # 3. Placement Data (Uso de columnas: name, part, x, y, rot)
+    # 3. Placement Data (Mapeo: component name, part, x, y, rot)
     placement_data = ET.SubElement(core, "placementData")
     
     count = 1
-    for i, row in df.iterrows():
+    for _, row in df.iterrows():
         try:
-            # Mapeo directo según tu información
+            # Usamos los nombres de columna actualizados
             comp_id = str(row['part']).strip()
-            designator = str(row['name']).strip()
-            # Conversión de mm a micras (x1000)
+            designator = str(row['component name']).strip()
+            
+            # Conversión a micras (x1000)
             pos_x = str(int(float(row['x']) * 1000))
             pos_y = str(int(float(row['y']) * 1000))
             theta = str(int(float(row['rot']) * 1000))
@@ -64,9 +65,9 @@ def create_iss_from_kypcb(df):
             ET.SubElement(place, "coordinate", x=pos_x, y=pos_y, theta=theta)
             count += 1
         except Exception:
-            continue # Salta filas con errores o vacías
+            continue
 
-    # 4. Model (Sección crítica para el transportador en JANET)
+    # 4. Model (Sección necesaria para JANET)
     model = ET.SubElement(root, "model")
     conv_data = ET.SubElement(model, "pwbConveyorData")
     ET.SubElement(conv_data, "pwbSupportCondition").text = "0"
@@ -74,36 +75,40 @@ def create_iss_from_kypcb(df):
 
     return indent(root)
 
-# --- Interfaz de Streamlit ---
-st.set_page_config(page_title="Convertidor Dialight KYpcb a ISS", layout="wide")
-st.title("🚀 Convertidor KYpcb ➔ ISS (Mapeo Automático)")
+# --- App de Streamlit ---
+st.set_page_config(page_title="Convertidor Dialight ISS", layout="wide")
+st.title("⚙️ Convertidor KYpcb a ISS")
 
-uploaded_file = st.file_uploader("Sube el archivo KYpcb", type=['csv', 'txt', 'kypcb'])
+archivo = st.file_uploader("Sube el archivo KYpcb", type=['csv', 'txt', 'kypcb'])
 
-if uploaded_file:
+if archivo:
     try:
-        # Intenta leer con diferentes delimitadores comunes
-        df = pd.read_csv(uploaded_file, sep=None, engine='python')
+        # Carga y normalización de nombres de columnas
+        df = pd.read_csv(archivo, sep=None, engine='python')
         
-        # Verificar que las columnas existan
-        required_cols = ['name', 'part', 'x', 'y', 'rot']
-        found_cols = [c for c in required_cols if c in df.columns]
+        # Limpieza: quitamos espacios y pasamos a minúsculas para evitar errores de lectura
+        df.columns = [c.strip().lower() for c in df.columns]
         
-        if len(found_cols) == len(required_cols):
-            st.success("✅ Columnas detectadas: name, part, x, y, rot")
+        # Columnas requeridas (ahora con 'component name')
+        required = ['component name', 'part', 'x', 'y', 'rot']
+        check = all(item in df.columns for item in required)
+        
+        if check:
+            st.success("✅ Columnas detectadas correctamente.")
             st.dataframe(df.head(10))
             
-            if st.button("Generar Archivo ISS"):
-                iss_xml = create_iss_from_kypcb(df)
+            if st.button("Generar Archivo .ISS"):
+                xml_final = create_iss_from_kypcb(df)
                 st.download_button(
                     label="📥 Descargar PROGRAMA_FINAL.iss",
-                    data=iss_xml,
+                    data=xml_final,
                     file_name="PROGRAMA_FINAL.iss",
                     mime="text/xml"
                 )
         else:
-            st.error(f"Error: El archivo debe contener las columnas: {required_cols}")
-            st.write("Columnas actuales en tu archivo:", df.columns.tolist())
+            st.error(f"Error: No se encontraron todas las columnas necesarias.")
+            st.write("El archivo debe tener estas columnas exactamente: component name, part, x, y, rot")
+            st.write("Columnas encontradas en tu archivo:", df.columns.tolist())
             
     except Exception as e:
-        st.error(f"Error al procesar el archivo: {e}")
+        st.error(f"Ocurrió un error: {e}")
