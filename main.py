@@ -122,4 +122,4 @@ if file:
                 st.code(output_xml, language='xml')
                 
     except Exception as e:
-        st.
+        st.error(f"Error al procesar el archivo: {e}")
